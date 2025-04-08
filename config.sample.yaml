@@ -1,0 +1,12 @@
+logging:
+  path: ""
+  level: "debug"
+  raven-dsn: ""
+db:
+  dsn: "postgres://postgres:postgres@localhost:5433/postgres?sslmode=disable"
+  maxconn: 5
+  debug: false
+http:
+  host: "127.0.0.1"
+  port: 8080
+  prefix: ""
