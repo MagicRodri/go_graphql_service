@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -20,10 +21,11 @@ func buildQuery(collectionName string, req RequestDTO) (string, error) {
 	if req.Page > 0 && req.PageSize > 0 {
 		sb.WriteString(fmt.Sprintf("offset: %d, ", req.Page*req.PageSize))
 	}
-
+	logging.Get().Debugf("Filters: %v, len: %d", req.Filters, len(req.Filters))
 	if len(req.Filters) > 0 {
 		filter, err := serializeFilter(req.Filters)
 		if err != nil {
+			logging.Get().Debugf("Error serializing filter: %v", err)
 			return "", err
 		}
 		sb.WriteString(fmt.Sprintf("filter: %s, ", filter))
@@ -50,7 +52,6 @@ func buildQuery(collectionName string, req RequestDTO) (string, error) {
 	sb.WriteString("} } pageInfo { hasNextPage hasPreviousPage }")
 	sb.WriteString(" totalCount")
 	sb.WriteString(" } }")
-	logging.Get().Debugf("GraphQL Query: %s", sb.String())
 	return sb.String(), nil
 }
 
@@ -62,6 +63,16 @@ func transformResponse(raw string) ([]map[string]interface{}, int, error) {
 
 	var data []map[string]interface{}
 	var total int
+
+	if errList, ok := res["errors"].([]interface{}); ok {
+		for _, err := range errList {
+			if errMap, ok := err.(map[string]interface{}); ok {
+				if message, ok := errMap["message"].(string); ok {
+					return nil, 0, fmt.Errorf("error: %s", message)
+				}
+			}
+		}
+	}
 
 	if dataMap, ok := res["data"].(map[string]interface{}); ok {
 		for _, collection := range dataMap {
@@ -112,4 +123,61 @@ func serializeFilter(filters map[string]interface{}) (string, error) {
 		parts = append(parts, fmt.Sprintf("%s: { %s }", field, strings.Join(condParts, ", ")))
 	}
 	return fmt.Sprintf("{ %s }", strings.Join(parts, ", ")), nil
+}
+
+func InitGraphQLTables(db *sql.DB) error {
+	// Get all table names from public schema
+	rows, err := db.Query(`
+		SELECT table_name 
+		FROM information_schema.tables 
+		WHERE table_schema = 'public' 
+		AND table_type = 'BASE TABLE'
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to query tables: %v", err)
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var tableName string
+		if err := rows.Scan(&tableName); err != nil {
+			return fmt.Errorf("failed to scan table name: %v", err)
+		}
+		tables = append(tables, tableName)
+	}
+
+	for _, table := range tables {
+		if err := enableTotalCount(db, table); err != nil {
+			return fmt.Errorf("failed to enable totalCount for %s: %v", table, err)
+		}
+		logging.Get().Debug("Enabled totalCount for table: %s", table)
+	}
+
+	return nil
+}
+
+func enableTotalCount(db *sql.DB, tableName string) error {
+	// Check if totalCount is already enabled
+	var existingComment sql.NullString
+	err := db.QueryRow(`
+		SELECT obj_description($1::regclass)
+	`, tableName).Scan(&existingComment)
+	if err != nil {
+		return fmt.Errorf("failed to check existing comment: %v", err)
+	}
+
+	// Skip if already configured
+	if strings.Contains(existingComment.String, `"totalCount": {"enabled": true}`) {
+		return nil
+	}
+
+	_, err = db.Exec(fmt.Sprintf(`
+		COMMENT ON TABLE "%s" IS e'@graphql({"totalCount": {"enabled": true}})'
+	`, tableName))
+	if err != nil {
+		return fmt.Errorf("failed to set comment: %v", err)
+	}
+
+	return nil
 }

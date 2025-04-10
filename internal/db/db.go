@@ -4,32 +4,24 @@ import (
 	"database/sql"
 
 	"github.com/MagicRodri/go_graphql_service/internal/config"
-	"github.com/MagicRodri/go_graphql_service/internal/logging"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func setupDB() (*sql.DB, error) {
-	connection, err := sql.Open("pgx", config.Get().DB.DSN)
+var connection *sql.DB
+
+func SetupDB() error {
+	db, err := sql.Open("pgx", config.Get().DB.DSN)
 	if err != nil {
-		return connection, err
+		return err
 	}
 
-	if err := connection.Ping(); err != nil {
-		return connection, err
+	if err := db.Ping(); err != nil {
+		return err
 	}
-
-	return connection, nil
+	connection = db
+	return nil
 }
+
 func GetDB() *sql.DB {
-	connection, err := setupDB()
-	if err != nil {
-		logging.Get().Fatal("Database connection failed:", err)
-	}
 	return connection
 }
-
-// func Close() error {
-// 	if connection != nil {
-// 		return connection.Close()
-// 	}
-// 	return nil
-// }
