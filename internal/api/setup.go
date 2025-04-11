@@ -40,4 +40,5 @@ func registerHandlers(app *fiber.App) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 	app.Post("/query", graphqlHandler)
+	app.Post("/query/raw", rawGraphqlHandler)
 }

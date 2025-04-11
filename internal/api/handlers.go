@@ -1,10 +1,40 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/MagicRodri/go_graphql_service/internal/db"
 	"github.com/MagicRodri/go_graphql_service/internal/logging"
 	"github.com/gofiber/fiber/v2"
 )
+
+func rawGraphqlHandler(c *fiber.Ctx) error {
+	var req RawRequest
+	var res RawResponse
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"errors": fmt.Sprintf("Invalid request body: %v", err),
+		})
+	}
+	logging.Get().Debugf("GraphQL Query: %s", req.Query)
+
+	// Execute the GraphQL query
+	var result string
+	if err := db.GetDB().QueryRowContext(c.Context(), "SELECT graphql.resolve($1)", req.Query).Scan(&result); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"errors": fmt.Sprintf("Query execution failed: %v", err),
+		})
+	}
+	logging.Get().Debugf("GraphQL Response: %s", result)
+
+	if err := json.Unmarshal([]byte(result), &res); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"errors": fmt.Sprintf("Failed to parse response: %v", err),
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(res)
+}
 
 func graphqlHandler(c *fiber.Ctx) error {
 	var req RequestDTO

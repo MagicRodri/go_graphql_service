@@ -1,5 +1,14 @@
 package api
 
+type RawRequest struct {
+	Query string `json:"query"`
+}
+
+type RawResponse struct {
+	Data   map[string]interface{}   `json:"data"`
+	Errors []map[string]interface{} `json:"errors"`
+}
+
 type RequestDTO struct {
 	Table    string                 `json:"table"`
 	Fields   []string               `json:"fields"`
