@@ -14,9 +14,18 @@ type RequestDTO struct {
 	Fields   []string               `json:"fields"`
 	Filters  map[string]interface{} `json:"filters"`
 	Exclude  []string               `json:"exclude"`
-	Extra    []string               `json:"extra"`
+	Extra    map[string]Relation    `json:"extra"`
 	Page     int                    `json:"page"`
 	PageSize int                    `json:"page_size"`
+}
+
+type Relation struct {
+	Fields     []string               `json:"fields,omitempty"`
+	Filters    map[string]interface{} `json:"filters,omitempty"`
+	Page       int                    `json:"page,omitempty"`
+	PageSize   int                    `json:"page_size,omitempty"`
+	TotalCount bool                   `json:"total_count,omitempty"`
+	Extra      map[string]Relation    `json:"extra,omitempty"`
 }
 
 type ResponseDTO struct {

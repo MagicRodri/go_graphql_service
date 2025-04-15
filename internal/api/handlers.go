@@ -73,18 +73,3 @@ func graphqlHandler(c *fiber.Ctx) error {
 	rawResponseToDTO(&req, data, &res, total)
 	return c.Status(res.ResponseStatus).JSON(res)
 }
-
-func rawResponseToDTO(req *RequestDTO, rawData []map[string]interface{}, res *ResponseDTO, total int) {
-
-	if total == 0 {
-		res.Message = "No data found"
-		res.ResponseStatus = fiber.StatusNotFound
-	}
-	res.Data = rawData
-	res.Count = total
-	res.CurrentPage = req.Page
-	res.PageCount = total / req.PageSize
-	res.PageSize = req.PageSize
-	res.ResponseStatus = fiber.StatusOK
-	res.Message = "Success"
-}
