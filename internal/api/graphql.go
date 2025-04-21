@@ -275,16 +275,16 @@ func enableTotalCount(db *sql.DB, tableName string) error {
 	return nil
 }
 
-func rawResponseToDTO(req *RequestDTO, rawData []map[string]interface{}, res *ResponseDTO, total int) {
+func rawResponseToDTO(req *RequestDTO, rawData *[]map[string]interface{}, res *ResponseDTO, total int) {
 
 	res.ResponseStatus = fiber.StatusOK
 	if total == 0 {
 		res.Message = "No data found"
 		res.ResponseStatus = fiber.StatusNotFound
 	}
-	res.Data = rawData
+	res.Data = *rawData
 	res.Count = total
 	res.CurrentPage = req.Page
 	res.PageCount = int(math.Ceil(float64(total) / float64(req.PageSize)))
-	res.PageSize = len(rawData)
+	res.PageSize = len(*rawData)
 }

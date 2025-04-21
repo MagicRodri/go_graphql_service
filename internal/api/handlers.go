@@ -70,6 +70,6 @@ func graphqlHandler(c *fiber.Ctx) error {
 		res.ResponseStatus = fiber.ErrInternalServerError.Code
 		return c.Status(fiber.StatusInternalServerError).JSON(res)
 	}
-	rawResponseToDTO(&req, data, &res, total)
+	rawResponseToDTO(&req, &data, &res, total)
 	return c.Status(res.ResponseStatus).JSON(res)
 }
