@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 
 	"github.com/MagicRodri/go_graphql_service/internal/logging"
+	"github.com/gofiber/fiber"
 )
 
 func buildQuery(collectionName string, req RequestDTO) (string, error) {
@@ -18,6 +20,7 @@ func buildQuery(collectionName string, req RequestDTO) (string, error) {
 	if req.PageSize > 0 {
 		sb.WriteString(fmt.Sprintf("first: %d, ", req.PageSize))
 	}
+	req.Page -= 1
 	if req.Page > 0 && req.PageSize > 0 {
 		sb.WriteString(fmt.Sprintf("offset: %d, ", req.Page*req.PageSize))
 	}
@@ -44,15 +47,105 @@ func buildQuery(collectionName string, req RequestDTO) (string, error) {
 		}
 	}
 
-	for _, relation := range req.Extra {
-		camelRel := snakeToCamel(relation)
-		sb.WriteString(fmt.Sprintf("%s { edges { node { id } } ", camelRel))
+	// Relationships
+	for relName, rel := range req.Extra {
+		if strings.HasSuffix(relName, "_set") {
+			// One-to-many relationship
+			collection := strings.TrimSuffix(relName, "_set") + "Collection"
+			if err := addCollection(&sb, snakeToCamel(collection), rel); err != nil {
+				return "", err
+			}
+		} else {
+			// Many-to-one relationship
+			if err := addNode(&sb, relName, rel); err != nil {
+				return "", err
+			}
+		}
 	}
 
 	sb.WriteString("} } pageInfo { hasNextPage hasPreviousPage }")
 	sb.WriteString(" totalCount")
 	sb.WriteString(" } }")
 	return sb.String(), nil
+}
+
+func addCollection(sb *strings.Builder, name string, rel Relation) error {
+	addParams(sb, rel.PageSize, rel.Page, rel.Filters)
+	sb.WriteString(fmt.Sprintf("%s { edges { node { ", name))
+
+	// Collection fields
+	if len(rel.Fields) == 0 {
+		sb.WriteString("id ")
+	} else {
+		for _, field := range rel.Fields {
+			sb.WriteString(fmt.Sprintf("%s ", snakeToCamel(field)))
+		}
+	}
+
+	// Nested relationships
+	for nestedName, nestedRel := range rel.Extra {
+		if strings.HasSuffix(nestedName, "_set") {
+			nestedCollection := strings.TrimSuffix(nestedName, "_set") + "Collection"
+			if err := addCollection(sb, snakeToCamel(nestedCollection), nestedRel); err != nil {
+				return err
+			}
+		} else {
+			if err := addNode(sb, nestedName, nestedRel); err != nil {
+				return err
+			}
+		}
+	}
+
+	if rel.TotalCount {
+		sb.WriteString("totalCount ")
+	}
+
+	sb.WriteString("} } } ")
+	return nil
+}
+
+func addNode(sb *strings.Builder, name string, rel Relation) error {
+	sb.WriteString(fmt.Sprintf("%s { ", name))
+
+	// Node fields
+	if len(rel.Fields) == 0 {
+		sb.WriteString("id ")
+	} else {
+		for _, field := range rel.Fields {
+			sb.WriteString(fmt.Sprintf("%s ", field))
+		}
+	}
+
+	// Nested relationships
+	for nestedName, nestedRel := range rel.Extra {
+		if strings.HasSuffix(nestedName, "_set") {
+			nestedCollection := strings.TrimSuffix(nestedName, "_set") + "Collection"
+			if err := addCollection(sb, snakeToCamel(nestedCollection), nestedRel); err != nil {
+				return err
+			}
+		} else {
+			if err := addNode(sb, nestedName, nestedRel); err != nil {
+				return err
+			}
+		}
+	}
+	sb.WriteString("} ")
+	return nil
+}
+
+func addParams(sb *strings.Builder, pageSize, page int, filters map[string]interface{}) {
+	if pageSize > 0 {
+		sb.WriteString(fmt.Sprintf("    first: %d,\n", pageSize))
+	}
+	if page > 0 {
+		sb.WriteString(fmt.Sprintf("offset: %d, ", (page)*pageSize))
+	}
+	if len(filters) > 0 {
+		filter, err := serializeFilter(filters)
+		if err == nil {
+			sb.WriteString(fmt.Sprintf("filter: %s, ", filter))
+		}
+	}
 }
 
 func transformResponse(raw string) ([]map[string]interface{}, int, error) {
@@ -180,4 +273,18 @@ func enableTotalCount(db *sql.DB, tableName string) error {
 	}
 
 	return nil
+}
+
+func rawResponseToDTO(req *RequestDTO, rawData *[]map[string]interface{}, res *ResponseDTO, total int) {
+
+	res.ResponseStatus = fiber.StatusOK
+	if total == 0 {
+		res.Message = "No data found"
+		res.ResponseStatus = fiber.StatusNotFound
+	}
+	res.Data = *rawData
+	res.Count = total
+	res.CurrentPage = req.Page
+	res.PageCount = int(math.Ceil(float64(total) / float64(req.PageSize)))
+	res.PageSize = len(*rawData)
 }
